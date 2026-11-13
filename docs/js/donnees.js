@@ -6,8 +6,8 @@ const CLE_LISTES = 'vocab.listes';
 const CLE_EDITION = 'vocab.cles';
 const CLE_PROGRESSION = 'vocab.progression';
 const CLE_PREFERENCES = 'vocab.preferences';
-const LIMITE_MOTS = 300;
-const LIMITE_TEXTE = 200;
+const LIMITE_MOTS = 150;
+const LIMITE_TEXTE = 150;
 
 export const ANNEES = ['A1', 'A2', 'A3'];
 
