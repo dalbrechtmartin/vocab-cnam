@@ -38,7 +38,7 @@ export function normaliserListe(brute) {
   if (!brute || typeof brute !== 'object' || !Array.isArray(brute.mots)) return null;
   const mots = brute.mots
     .map((mot) => ({ en: texteCourt(mot?.en), fr: texteCourt(mot?.fr) }))
-    .filter((mot) => mot.en && mot.fr)
+    .filter((mot, index, tous) => mot.en && mot.fr && tous.findIndex((autre) => autre.en === mot.en && autre.fr === mot.fr) === index)
     .slice(0, LIMITE_MOTS);
   const dateValide = (date) => (/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') ? date : '');
   const dateSeance = dateValide(brute.dateSeance);
@@ -137,6 +137,12 @@ const corpsListe = ({ dateSeance, aApprendrePour, annee, prof, promo, mots }) =>
 export async function publier(liste) {
   const { id, cleEdition } = await appelApi('/api/listes', { method: 'POST', body: corpsListe(liste) });
   ecrireStockage(CLE_EDITION, { ...clesEdition(), [id]: cleEdition });
+  const progression = lireStockage(CLE_PROGRESSION, {});
+  if (progression[liste.id]) {
+    progression[id] = progression[liste.id];
+    delete progression[liste.id];
+    ecrireStockage(CLE_PROGRESSION, progression);
+  }
   if (liste.source === 'locale') supprimerLocale(liste.id);
   cache = null;
   return id;

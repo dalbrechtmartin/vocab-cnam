@@ -13,6 +13,8 @@ const LIMITE_MOTS = 300;
 const LIMITE_TEXTE = 200;
 const LIMITE_CORPS = 100_000;
 const ECRITURES_PAR_HEURE = 30;
+const ECRITURES_GLOBALES_PAR_HEURE = 300;
+const LIMITE_LISTES = 2000;
 
 mkdirSync(DOSSIER_DONNEES, { recursive: true });
 const base = new DatabaseSync(`${DOSSIER_DONNEES}/vocab.sqlite`);
@@ -33,14 +35,16 @@ const requetes = {
   creer: base.prepare('INSERT INTO listes (id, contenu, empreinte_cle) VALUES (?, ?, ?)'),
   modifier: base.prepare('UPDATE listes SET contenu = ?, modifie_le = datetime(\'now\') WHERE id = ?'),
   supprimer: base.prepare('DELETE FROM listes WHERE id = ?'),
+  compter: base.prepare('SELECT COUNT(*) AS total FROM listes'),
 };
 
 const empreinte = (cle) => createHash('sha256').update(cle).digest();
 
 function cleValide(cleFournie, empreinteStockee) {
   if (!cleFournie) return false;
-  if (CLE_ADMIN && cleFournie.length === CLE_ADMIN.length && timingSafeEqual(Buffer.from(cleFournie), Buffer.from(CLE_ADMIN))) return true;
-  return timingSafeEqual(empreinte(cleFournie), Buffer.from(empreinteStockee, 'hex'));
+  const empreinteFournie = empreinte(cleFournie);
+  if (CLE_ADMIN && timingSafeEqual(empreinteFournie, empreinte(CLE_ADMIN))) return true;
+  return timingSafeEqual(empreinteFournie, Buffer.from(empreinteStockee, 'hex'));
 }
 
 class ErreurClient extends Error {
@@ -50,7 +54,10 @@ class ErreurClient extends Error {
   }
 }
 
-const texte = (valeur) => (typeof valeur === 'string' ? valeur.trim().slice(0, LIMITE_TEXTE) : '');
+// Retire les caractères de contrôle et les débuts de formule (=, +, -, @) qui piégeraient un export tableur.
+const texte = (valeur) => (typeof valeur === 'string'
+  ? valeur.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().replace(/^[=+\-@]+/, '').trim().slice(0, LIMITE_TEXTE)
+  : '');
 const date = (valeur) => (typeof valeur === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valeur) ? valeur : '');
 
 function validerListe(corps) {
@@ -72,14 +79,31 @@ function validerListe(corps) {
   };
 }
 
-// Limite simple des écritures par adresse IP, en mémoire.
+// Limite des écritures en mémoire : par client (IPv6 regroupées par /64) et au total.
+const HEURE = 3_600_000;
 const ecritures = new Map();
+let ecrituresGlobales = [];
+
+const client = (ip) => (ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip);
+
 function limiterEcritures(ip) {
   const maintenant = Date.now();
-  const recentes = (ecritures.get(ip) ?? []).filter((t) => maintenant - t < 3_600_000);
-  if (recentes.length >= ECRITURES_PAR_HEURE) throw new ErreurClient(429, 'Trop de modifications, réessaie dans une heure.');
-  ecritures.set(ip, [...recentes, maintenant]);
+  const cle = client(ip);
+  const recentes = (ecritures.get(cle) ?? []).filter((t) => maintenant - t < HEURE);
+  ecrituresGlobales = ecrituresGlobales.filter((t) => maintenant - t < HEURE);
+  if (recentes.length >= ECRITURES_PAR_HEURE || ecrituresGlobales.length >= ECRITURES_GLOBALES_PAR_HEURE) {
+    throw new ErreurClient(429, 'Trop de modifications, réessaie dans une heure.');
+  }
+  ecritures.set(cle, [...recentes, maintenant]);
+  ecrituresGlobales.push(maintenant);
 }
+
+setInterval(() => {
+  const maintenant = Date.now();
+  for (const [cle, horaires] of ecritures) {
+    if (horaires.every((t) => maintenant - t >= HEURE)) ecritures.delete(cle);
+  }
+}, HEURE).unref();
 
 async function lireCorps(requete) {
   let taille = 0;
@@ -127,6 +151,7 @@ async function traiter(requete) {
     if (requete.method === 'GET') return [200, requetes.toutes.all().map(enListe)];
     if (requete.method === 'POST') {
       limiterEcritures(ip);
+      if (requetes.compter.get().total >= LIMITE_LISTES) throw new ErreurClient(507, 'Le serveur de partage est plein, préviens la personne qui le gère.');
       const liste = validerListe(await lireCorps(requete));
       const id = randomUUID();
       const cleEdition = randomBytes(24).toString('base64url');

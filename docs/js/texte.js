@@ -18,9 +18,19 @@ function simplifier(texte) {
     .trim();
 }
 
-/** Réponses acceptées : la forme complète et chaque variante séparée par « / ». */
+/**
+ * Réponses acceptées pour un texte à variantes séparées par « / ».
+ * « fois/mensualités » ne remplace que le dernier mot (« payer en plusieurs mensualités ») ;
+ * « a nappy / a diaper » donne deux expressions complètes.
+ */
 export function variantes(texte) {
-  const formes = [texte, ...texte.split('/')];
+  const parties = texte.split('/').map((partie) => partie.trim()).filter(Boolean);
+  const formes = [parties[0] ?? ''];
+  for (const partie of parties.slice(1)) {
+    const precedente = formes.at(-1).split(/\s+/);
+    const unSeulMot = !/\s/.test(partie.replace(/\([^)]*\)/g, '').trim());
+    formes.push(unSeulMot && precedente.length > 1 ? [...precedente.slice(0, -1), partie].join(' ') : partie);
+  }
   return [...new Set(formes.map(simplifier).filter(Boolean))];
 }
 

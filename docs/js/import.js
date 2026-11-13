@@ -58,21 +58,65 @@ function indiceColonne(reference) {
   return [...lettres].reduce((total, lettre) => total * 26 + lettre.charCodeAt(0) - 64, 0) - 1;
 }
 
+/** Chemin de la première feuille du classeur (pas forcément sheet1.xml). */
+async function cheminPremiereFeuille(lire) {
+  const classeur = await lire('xl/workbook.xml');
+  const relations = await lire('xl/_rels/workbook.xml.rels');
+  const premiere = classeur && analyserXml(classeur).getElementsByTagNameNS(S, 'sheet')[0];
+  const idRelation = premiere?.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+  const relation = relations && [...analyserXml(relations).getElementsByTagName('Relationship')].find((r) => r.getAttribute('Id') === idRelation);
+  const cible = relation?.getAttribute('Target');
+  if (!cible) return 'xl/worksheets/sheet1.xml';
+  return cible.startsWith('/') ? cible.slice(1) : `xl/${cible}`;
+}
+
 async function lignesXlsx(lire) {
   const partages = await lire('xl/sharedStrings.xml');
   const chaines = partages
     ? [...analyserXml(partages).getElementsByTagNameNS(S, 'si')].map((si) => [...si.getElementsByTagNameNS(S, 't')].map((t) => t.textContent).join(''))
     : [];
-  const feuille = analyserXml(await lire('xl/worksheets/sheet1.xml'));
-  return [...feuille.getElementsByTagNameNS(S, 'row')].map((ligne) => {
+  const contenu = await lire(await cheminPremiereFeuille(lire));
+  if (!contenu) throw new Error('Feuille Excel introuvable dans ce fichier.');
+  return [...analyserXml(contenu).getElementsByTagNameNS(S, 'row')].map((ligne) => {
     const valeurs = [];
+    let colonne = 0;
     for (const cellule of ligne.getElementsByTagNameNS(S, 'c')) {
       const type = cellule.getAttribute('t');
       const brute = cellule.getElementsByTagNameNS(S, 'v')[0]?.textContent ?? cellule.getElementsByTagNameNS(S, 't')[0]?.textContent ?? '';
-      valeurs[indiceColonne(cellule.getAttribute('r') ?? 'A')] = type === 's' ? chaines[Number(brute)] : brute;
+      const reference = cellule.getAttribute('r');
+      colonne = reference ? indiceColonne(reference) : colonne;
+      valeurs[colonne++] = type === 's' ? chaines[Number(brute)] : brute;
     }
     return Array.from(valeurs, (v) => (v ?? '').trim());
   });
+}
+
+/** Lecture CSV avec champs entre guillemets ; séparateur détecté sur la première ligne (; , ou tabulation). */
+function lignesCsv(texte) {
+  const premiere = texte.split(/\r?\n/, 1)[0];
+  const separateur = ['\t', ';', ','].reduce((meilleur, s) => (premiere.split(s).length > premiere.split(meilleur).length ? s : meilleur), ';');
+  const lignes = [];
+  let ligne = [];
+  let champ = '';
+  let entreGuillemets = false;
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte[i];
+    if (entreGuillemets) {
+      if (c === '"' && texte[i + 1] === '"') { champ += '"'; i++; }
+      else if (c === '"') entreGuillemets = false;
+      else champ += c;
+    } else if (c === '"' && champ === '') entreGuillemets = true;
+    else if (c === separateur) { ligne.push(champ); champ = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && texte[i + 1] === '\n') i++;
+      lignes.push([...ligne, champ]);
+      ligne = [];
+      champ = '';
+    } else champ += c;
+  }
+  if (champ || ligne.length) lignes.push([...ligne, champ]);
+  // Retire l'apostrophe ajoutée à l'export pour neutraliser les formules.
+  return lignes.map((l) => l.map((v) => v.replace(/^'(?=[=+\-@])/, '').trim()));
 }
 
 /** Texte collé (depuis Word, Excel, un mail…) : une paire par ligne. */
@@ -92,15 +136,35 @@ export function lignesTexte(texte) {
     });
 }
 
-const ENTETES = /^(anglais|english|en|français|francais|french|fr|mot|word|traduction|translation)$/i;
+const ENTETE_EN = /^(anglais|english|en|mot|word|vocabulaire|vocabulary)$/i;
+const ENTETE_FR = /^(français|francais|french|fr|traduction|translation)$/i;
 
-/** Garde les lignes à deux colonnes remplies et retire la ligne d'en-tête éventuelle. */
+const valeur = (cellule) => String(cellule ?? '').trim();
+
+/**
+ * Repère les colonnes anglais et français (grâce à l'en-tête, sinon les deux colonnes les plus remplies
+ * de texte, en ignorant les numéros) puis garde les lignes où les deux sont remplies.
+ */
 export function lignesEnMots(lignes) {
+  const indexEntete = lignes.findIndex((ligne) => ligne.some((c) => ENTETE_EN.test(valeur(c))) && ligne.some((c) => ENTETE_FR.test(valeur(c))));
+  let colonneEn;
+  let colonneFr;
+  if (indexEntete >= 0) {
+    colonneEn = lignes[indexEntete].findIndex((c) => ENTETE_EN.test(valeur(c)));
+    colonneFr = lignes[indexEntete].findIndex((c) => ENTETE_FR.test(valeur(c)));
+  } else {
+    const largeur = Math.max(0, ...lignes.map((ligne) => ligne.length));
+    const remplissage = Array.from({ length: largeur }, (_, colonne) => ({
+      colonne,
+      total: lignes.filter((ligne) => /\p{L}/u.test(valeur(ligne[colonne]))).length,
+    }));
+    [colonneEn, colonneFr] = remplissage.sort((a, b) => b.total - a.total).slice(0, 2).map((r) => r.colonne).sort((a, b) => a - b);
+  }
+  if (colonneEn === undefined || colonneFr === undefined) return [];
   return lignes
-    .map((ligne) => ligne.filter((v) => v !== undefined && String(v).trim() !== ''))
-    .filter((ligne) => ligne.length >= 2)
-    .filter((ligne) => !(ENTETES.test(ligne[0]) && ENTETES.test(ligne[1])))
-    .map(([en, fr]) => ({ en: String(en).trim(), fr: String(fr).trim() }));
+    .filter((_, index) => index !== indexEntete)
+    .map((ligne) => ({ en: valeur(ligne[colonneEn]), fr: valeur(ligne[colonneFr]) }))
+    .filter((mot) => mot.en && mot.fr);
 }
 
 /** @returns {Promise<{en: string, fr: string}[]>} */
@@ -108,6 +172,7 @@ export async function importerFichier(fichier) {
   const nom = fichier.name.toLowerCase();
   if (nom.endsWith('.docx')) return lignesEnMots(await lignesDocx(await lireZip(await fichier.arrayBuffer())));
   if (nom.endsWith('.xlsx')) return lignesEnMots(await lignesXlsx(await lireZip(await fichier.arrayBuffer())));
-  if (nom.endsWith('.csv') || nom.endsWith('.txt') || nom.endsWith('.tsv')) return lignesEnMots(lignesTexte(await fichier.text()));
+  if (nom.endsWith('.csv') || nom.endsWith('.tsv')) return lignesEnMots(lignesCsv(await fichier.text()));
+  if (nom.endsWith('.txt')) return lignesEnMots(lignesTexte(await fichier.text()));
   throw new Error('Format non pris en charge : utilise un fichier .docx, .xlsx, .csv ou .txt (les anciens .doc et .xls sont à réenregistrer au nouveau format).');
 }

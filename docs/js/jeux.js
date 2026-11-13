@@ -68,11 +68,12 @@ function cartes(conteneur, liste, sens, terminer) {
     conteneur.innerHTML = `
       ${barre(acquis, total)}
       <div class="carte-scene">
-        <button type="button" class="carte" aria-pressed="false" aria-label="Retourner la carte">
-          <span class="carte-face carte-recto"><span class="carte-texte">${echapper(question)}</span><span class="carte-aide">Clique ou appuie sur Espace pour retourner</span></span>
-          <span class="carte-face carte-verso"><span class="carte-texte">${echapper(reponse)}</span></span>
+        <button type="button" class="carte" aria-pressed="false">
+          <span class="carte-face carte-recto"><span class="carte-texte" lang="${langueQuestion}">${echapper(question)}</span><span class="carte-aide">Clique ou appuie sur Espace pour retourner</span></span>
+          <span class="carte-face carte-verso" aria-hidden="true"><span class="carte-texte" lang="${langueReponse}">${echapper(reponse)}</span></span>
         </button>
       </div>
+      <p class="visuellement-cache" role="status" aria-live="polite"></p>
       <div class="rangee-audio">${boutonAudio(question, langueQuestion)}${boutonAudio(reponse, langueReponse)}</div>
       <div class="actions-carte" hidden>
         <button type="button" class="bouton bouton-revoir" data-reponse="non">À revoir <kbd>←</kbd></button>
@@ -80,11 +81,17 @@ function cartes(conteneur, liste, sens, terminer) {
       </div>`;
     const carte = conteneur.querySelector('.carte');
     const actions = conteneur.querySelector('.actions-carte');
+    const annonce = conteneur.querySelector('[role="status"]');
     const retourner = () => {
       const retournee = carte.classList.toggle('retournee');
       carte.setAttribute('aria-pressed', String(retournee));
+      carte.querySelector('.carte-recto').setAttribute('aria-hidden', String(retournee));
+      carte.querySelector('.carte-verso').setAttribute('aria-hidden', String(!retournee));
       actions.hidden = false;
-      if (retournee) lire(reponse, langueReponse);
+      if (retournee) {
+        annonce.textContent = `Réponse : ${reponse}`;
+        lire(reponse, langueReponse);
+      }
     };
     carte.addEventListener('click', retourner);
     actions.addEventListener('click', (evenement) => {
@@ -131,8 +138,8 @@ function qcm(conteneur, liste, sens, terminer) {
     const choix = melanger([reponse, ...intrus]);
     conteneur.innerHTML = `
       ${barre(index, file.length)}
-      <p class="consigne">Quelle est la traduction de :</p>
-      <p class="question">${echapper(question)} ${boutonAudio(question, langueQuestion)}</p>
+      <p class="consigne">Question ${index + 1} sur ${file.length}. Quelle est la traduction de :</p>
+      <p class="question" tabindex="-1"><span lang="${langueQuestion}">${echapper(question)}</span> ${boutonAudio(question, langueQuestion)}</p>
       <div class="choix" role="group" aria-label="Propositions">
         ${choix.map((c, i) => `<button type="button" class="bouton-choix" data-choix="${i}"><kbd>${i + 1}</kbd> ${echapper(c)}</button>`).join('')}
       </div>
@@ -162,6 +169,7 @@ function qcm(conteneur, liste, sens, terminer) {
     };
     boutons.forEach((b, i) => b.addEventListener('click', () => choisir(i)));
     suivant.addEventListener('click', () => { index++; afficher(); });
+    conteneur.querySelector('.question').focus();
     clavier = (evenement) => {
       if (/^[1-4]$/.test(evenement.key)) choisir(Number(evenement.key) - 1);
     };
@@ -267,30 +275,39 @@ function paires(conteneur, liste, _sens, terminer) {
     const tuiles = melanger(mots.flatMap((mot, i) => [{ i, texte: mot.en, langue: 'en' }, { i, texte: mot.fr, langue: 'fr' }]));
     conteneur.innerHTML = `
       ${barre(manche, manches.length)}
-      <p class="consigne">Associe chaque mot anglais 🇬🇧 à sa traduction 🇫🇷.</p>
+      <p class="consigne" tabindex="-1">Manche ${manche + 1} sur ${manches.length}. Associe chaque mot anglais 🇬🇧 à sa traduction 🇫🇷.</p>
       <div class="grille-paires">
-        ${tuiles.map((t, k) => `<button type="button" class="tuile tuile-${t.langue}" data-k="${k}" lang="${t.langue}">${echapper(t.texte)}</button>`).join('')}
+        ${tuiles.map((t, k) => `<button type="button" class="tuile tuile-${t.langue}" data-k="${k}" aria-pressed="false"><span class="visuellement-cache">${NOMS_LANGUES[t.langue]} : </span><span lang="${t.langue}">${echapper(t.texte)}</span></button>`).join('')}
       </div>
       <p class="retour" role="status" aria-live="polite"></p>`;
     const boutons = [...conteneur.querySelectorAll('.tuile')];
     const retour = conteneur.querySelector('.retour');
     let selection = null;
     let trouvees = 0;
+    const choisir = (bouton, choisie) => {
+      bouton.classList.toggle('choisie', choisie);
+      bouton.setAttribute('aria-pressed', String(choisie));
+    };
+    conteneur.querySelector('.consigne').focus();
     boutons.forEach((bouton, k) => bouton.addEventListener('click', () => {
       const tuile = tuiles[k];
       lire(tuile.texte, tuile.langue);
-      if (selection === null) { selection = k; bouton.classList.add('choisie'); return; }
-      if (selection === k) { selection = null; bouton.classList.remove('choisie'); return; }
+      if (selection === null) { selection = k; choisir(bouton, true); return; }
+      if (selection === k) { selection = null; choisir(bouton, false); return; }
       const autre = tuiles[selection];
       const precedent = boutons[selection];
       selection = null;
-      precedent.classList.remove('choisie');
-      if (autre.i === tuile.i && autre.langue !== tuile.langue) {
+      choisir(precedent, false);
+      // Compare les textes : deux tuiles identiques (synonymes) restent interchangeables.
+      const [anglaise, francaise] = tuile.langue === 'en' ? [tuile, autre] : [autre, tuile];
+      const mot = autre.langue !== tuile.langue && mots.find((m) => m.en === anglaise.texte && m.fr === francaise.texte);
+      if (mot) {
         [precedent, bouton].forEach((b) => { b.classList.add('trouvee'); b.disabled = true; });
-        noterReponse(liste.id, mots[tuile.i], !aRevoir.has(mots[tuile.i]));
+        noterReponse(liste.id, mot, !aRevoir.has(mot));
         trouvees++;
-        retour.textContent = `Paire trouvée : ${mots[tuile.i].en} = ${mots[tuile.i].fr}`;
+        retour.textContent = `Paire trouvée : ${mot.en} = ${mot.fr}`;
         if (trouvees === mots.length) setTimeout(() => { manche++; afficher(); }, 700);
+        else boutons.find((b) => !b.disabled)?.focus();
       } else {
         erreurs++;
         [autre, tuile].forEach((t) => aRevoir.add(mots[t.i]));

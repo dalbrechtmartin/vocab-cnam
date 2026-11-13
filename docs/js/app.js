@@ -198,7 +198,8 @@ async function detail(id) {
 }
 
 function telechargerCsv(liste) {
-  const cellule = (v) => `"${v.replace(/"/g, '""')}"`;
+  // L'apostrophe neutralise les formules qu'un tableur exécuterait (=, +, -, @).
+  const cellule = (v) => `"${(/^[=+\-@\t\r]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`;
   const contenu = ['anglais;français', ...liste.mots.map((m) => `${cellule(m.en)};${cellule(m.fr)}`)].join('\r\n');
   const lien = document.createElement('a');
   lien.href = URL.createObjectURL(new Blob(['﻿', contenu], { type: 'text/csv;charset=utf-8' }));
@@ -234,7 +235,7 @@ function bilan(zone, { justes, total, aRevoir, detail }, lienListe, rejouer) {
   const score = total ? Math.round((justes / total) * 100) : 0;
   const message = score === 100 ? 'Parfait ! 🎉' : score >= 70 ? 'Très bien ! 💪' : 'Continue, ça rentre ! 🌱';
   zone.innerHTML = `
-    <div class="bilan${score === 100 ? ' parfait' : ''}">
+    <div class="bilan${score === 100 ? ' parfait' : ''}" tabindex="-1">
       <p class="score">${score} %</p>
       <p class="message-bilan">${message}</p>
       <p>${justes} / ${total} du premier coup${detail ? ` · ${detail}` : ''}</p>
@@ -245,7 +246,7 @@ function bilan(zone, { justes, total, aRevoir, detail }, lienListe, rejouer) {
       </div>
     </div>`;
   zone.querySelector('#rejouer').addEventListener('click', rejouer);
-  zone.querySelector('#rejouer').focus();
+  zone.querySelector('.bilan').focus();
 }
 
 // --- Création et modification ---
@@ -259,6 +260,7 @@ function ligneMot(mot = { en: '', fr: '' }) {
 }
 
 async function formulaire(id) {
+  await toutesLesListes(); // renseigne apiJoignable pour cocher « Publier » par défaut
   const existante = id ? await trouverListe(id) : null;
   if (id && (!existante || !peutModifier(existante))) return introuvable();
   const prefs = preferences();
@@ -304,7 +306,7 @@ async function formulaire(id) {
 
       <div class="rangee-boutons">
         <button type="submit" class="bouton bouton-grand">${existante ? 'Enregistrer' : 'Créer la liste'}</button>
-        ${existante ? '' : '<label class="case"><input type="checkbox" name="publier" checked> Publier aussi pour tout le monde (les autres promos pourront l’utiliser)</label>'}
+        ${existante ? '' : `<label class="case"><input type="checkbox" name="publier" ${apiJoignable ? 'checked' : ''}> Publier aussi pour tout le monde (les autres promos pourront l’utiliser)</label>`}
       </div>
       <p class="retour" id="retour-formulaire" role="status" aria-live="polite"></p>
     </form>`;
@@ -359,8 +361,19 @@ async function formulaire(id) {
     }
   });
 
+  const boutonEnvoi = form.querySelector('[type="submit"]');
   form.addEventListener('submit', async (evenement) => {
     evenement.preventDefault();
+    if (boutonEnvoi.disabled) return;
+    boutonEnvoi.disabled = true;
+    try {
+      await enregistrer();
+    } finally {
+      boutonEnvoi.disabled = false;
+    }
+  });
+
+  async function enregistrer() {
     const retour = form.querySelector('#retour-formulaire');
     const donnees = new FormData(form);
     const incompletes = motsSaisis().filter((m) => !m.en || !m.fr).length;
@@ -398,7 +411,7 @@ async function formulaire(id) {
     } catch (erreur) {
       retour.textContent = `Impossible : ${erreur.message}`;
     }
-  });
+  }
 }
 
 // --- Réception d'un lien de partage ---

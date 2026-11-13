@@ -13,7 +13,8 @@
   --presque-fond: #fff4d6;
   --faux: #b42318;
   --faux-fond: #fde8e6;
-  --focus: #f59e0b;
+  --focus: #b45309;
+  --bordure-champ: #8a89a0;
   --rayon: 14px;
   --ombre: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 16px rgb(0 0 0 / 6%);
   color-scheme: light dark;
@@ -36,6 +37,8 @@
     --faux: #ff8a80;
     --faux-fond: #3d1815;
     --ombre: 0 1px 2px rgb(0 0 0 / 40%);
+    --focus: #f59e0b;
+    --bordure-champ: #77769a;
   }
 }
 
@@ -93,15 +96,15 @@ main { flex: 1; width: 100%; max-width: 960px; margin: 0 auto; padding: 1.25rem 
 .bouton-icone { min-width: 44px; min-height: 44px; border: none; background: none; color: var(--texte-doux); cursor: pointer; font-size: 1.1rem; border-radius: 8px; }
 .bouton-icone:hover { background: var(--faux-fond); color: var(--faux); }
 .bouton-audio {
-  min-height: 36px; padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid var(--bordure);
+  min-height: 36px; padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid var(--bordure-champ);
   background: var(--surface); color: var(--texte); cursor: pointer; font: inherit; font-size: 0.9rem; white-space: nowrap;
 }
 .bouton-audio:hover { border-color: var(--primaire); }
-kbd { font-size: 0.75em; opacity: 0.7; font-family: inherit; }
+kbd { font-size: 0.8em; font-family: inherit; padding: 0 0.3em; border: 1px solid currentcolor; border-radius: 4px; }
 
 .champ {
   width: 100%; min-height: 44px; padding: 0.5rem 0.75rem; font: inherit; color: var(--texte);
-  background: var(--surface); border: 1.5px solid var(--bordure); border-radius: 10px;
+  background: var(--surface); border: 1.5px solid var(--bordure-champ); border-radius: 10px;
 }
 .champ:focus { border-color: var(--primaire); }
 label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; font-size: 0.95rem; }
@@ -185,7 +188,7 @@ label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; fo
 .choix { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .bouton-choix {
   min-height: 56px; padding: 0.75rem 1rem; text-align: left; font: inherit; font-weight: 600; color: var(--texte);
-  background: var(--surface); border: 2px solid var(--bordure); border-radius: 12px; cursor: pointer;
+  background: var(--surface); border: 2px solid var(--bordure-champ); border-radius: 12px; cursor: pointer;
 }
 .bouton-choix:hover:not(:disabled) { border-color: var(--primaire); }
 .bouton-choix.juste, .tuile.trouvee { background: var(--juste-fond); border-color: var(--juste); color: var(--juste); }
@@ -203,7 +206,7 @@ label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; fo
 .grille-paires { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .tuile {
   min-height: 70px; padding: 0.5rem; font: inherit; font-weight: 600; color: var(--texte); cursor: pointer;
-  background: var(--surface); border: 2px solid var(--bordure); border-radius: 12px; transition: transform 0.15s;
+  background: var(--surface); border: 2px solid var(--bordure-champ); border-radius: 12px; transition: transform 0.15s;
 }
 .tuile-en { border-left: 6px solid var(--primaire); }
 .tuile.choisie { background: var(--primaire-doux); border-color: var(--primaire); transform: scale(1.03); }
@@ -227,6 +230,7 @@ label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; fo
 .zone-depot { border: 2.5px dashed var(--bordure); border-radius: var(--rayon); padding: 1.25rem; text-align: center; margin-bottom: 1rem; }
 .zone-depot.survol { border-color: var(--primaire); background: var(--primaire-doux); }
 .zone-depot label { display: inline-flex; }
+.zone-depot label:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
 details { margin-bottom: 0.5rem; }
 summary { cursor: pointer; font-weight: 600; color: var(--primaire); padding: 0.4rem 0; }
 details textarea { margin: 0.5rem 0; resize: vertical; }
