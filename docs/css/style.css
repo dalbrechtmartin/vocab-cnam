@@ -251,3 +251,34 @@ details textarea { margin: 0.5rem 0; resize: vertical; }
 .ligne-voix label { flex: 1; min-width: 0; }
 .maitrise-liste p { margin: 0.4rem 0; }
 .jauge-large { display: block; width: min(100%, 320px); height: 10px; border-radius: 5px; }
+
+/* Choix de la classe */
+.choix-classe { margin: 1.5rem 0 0; padding: 1.25rem; background: var(--surface); border: 1.5px solid var(--primaire); border-radius: var(--rayon); box-shadow: var(--ombre); }
+.choix-classe h2:focus, .bandeau-classe:focus { outline: none; }
+.note-classe { color: var(--texte-doux); margin: 0.25rem 0 1rem; }
+.grille-classes { display: grid; gap: 0.5rem; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0.75rem; }
+.bouton-classe {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; min-height: 88px; padding: 0.75rem;
+  font: inherit; text-align: left; color: var(--texte); background: var(--primaire-doux); border: 2px solid var(--bordure-champ);
+  border-radius: 12px; cursor: pointer;
+}
+.bouton-classe:hover { border-color: var(--primaire); }
+.bouton-classe strong { font-size: 1.15rem; }
+.code-classe { font-weight: 700; color: var(--primaire); }
+.detail-classe { font-size: 0.9rem; color: var(--texte-doux); }
+.lien-bouton { min-height: 44px; padding: 0 0.25rem; font: inherit; color: var(--primaire); background: none; border: none; text-decoration: underline; cursor: pointer; }
+.bandeau-classe { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin: 0 0 1rem; }
+.bandeau-classe p { margin: 0; }
+.bandeau-classe .retour { flex-basis: 100%; margin: 0; font-weight: 500; color: var(--texte-doux); }
+.bouton-petit { min-height: 44px; padding: 0.3rem 0.9rem; font-size: 0.95rem; }
+
+/* Filtres en puces */
+.puces { display: flex; flex-wrap: wrap; gap: 0.5rem; grid-column: 1 / -1; }
+.puce {
+  display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0.3rem 0.9rem; font: inherit; font-weight: 600;
+  color: var(--texte); background: var(--surface); border: 1.5px solid var(--bordure-champ); border-radius: 999px; cursor: pointer;
+}
+.puce[aria-pressed="true"] { color: var(--primaire-texte); background: var(--primaire); border-color: var(--primaire); }
+.puce:disabled { opacity: 0.5; cursor: default; }
+.compte { font-size: 0.8rem; font-weight: 700; padding: 0 0.4rem; border-radius: 999px; background: var(--primaire-doux); color: var(--primaire); }
+.puce[aria-pressed="true"] .compte { background: var(--primaire-texte); }

@@ -53,32 +53,78 @@ function carteListe(liste) {
 
 // --- Accueil ---
 
+// La classe de l'élève : '' tant qu'il n'a rien choisi, TOUTES s'il veut tout voir.
+const TOUTES = 'tout';
+const NOMS_ANNEES = { A1: '1re année', A2: '2e année', A3: '3e année' };
+const lienClasse = (annee) => `${location.origin}${location.pathname}#/${annee.toLowerCase()}`;
+
+function resumeClasse(listes, annee) {
+  const siennes = listes.filter((l) => l.annee === annee);
+  const profs = [...new Set(siennes.map((l) => l.prof).filter(Boolean))];
+  const nombre = siennes.length ? `${siennes.length} liste${siennes.length > 1 ? 's' : ''}` : '0 liste';
+  return [...profs.map(echapper), nombre].join(' · ');
+}
+
+function choixClasse(listes) {
+  return `
+    <section class="choix-classe" aria-labelledby="titre-classe">
+      <h2 id="titre-classe" tabindex="-1">Tu es en quelle année ?</h2>
+      <p class="note-classe">Ton choix est retenu sur cet appareil, tu pourras le changer.</p>
+      <div class="grille-classes">
+        ${ANNEES.map((annee) => `
+          <button type="button" class="bouton-classe" data-classe="${annee}">
+            <strong>${NOMS_ANNEES[annee]}</strong>
+            <span class="code-classe">${annee}</span>
+            <span class="detail-classe">${resumeClasse(listes, annee)}</span>
+          </button>`).join('')}
+      </div>
+      <button type="button" class="lien-bouton" data-classe="${TOUTES}">Je ne sais pas, tout afficher</button>
+    </section>`;
+}
+
+function bandeauClasse(classe) {
+  if (classe === TOUTES) {
+    return `<p class="bandeau-classe" tabindex="-1">Toutes les années sont affichées. <button type="button" class="lien-bouton" data-classe="">Choisir ma classe</button></p>`;
+  }
+  return `
+    <div class="bandeau-classe" tabindex="-1">
+      <p>Ta classe : <strong>${NOMS_ANNEES[classe]} · ${classe}</strong> <button type="button" class="lien-bouton" data-classe="">Changer</button></p>
+      <button type="button" class="bouton bouton-secondaire bouton-petit" id="copier-lien-classe">🔗 Copier le lien de ma classe</button>
+      <span class="retour" role="status" aria-live="polite"></span>
+    </div>`;
+}
+
 async function accueil() {
   principal.innerHTML = '<p class="chargement">Chargement des listes…</p>';
   const listes = await toutesLesListes(true);
-  const prefs = preferences();
+  const classe = preferences().annee;
+  const choisie = ANNEES.includes(classe) ? classe : '';
+  const deMaClasse = (l) => !choisie || l.annee === choisie;
   const prochaine = listes
-    .filter((l) => l.aApprendrePour && l.aApprendrePour >= aujourdhui())
+    .filter((l) => deMaClasse(l) && l.aApprendrePour && l.aApprendrePour >= aujourdhui())
     .sort((a, b) => a.aApprendrePour.localeCompare(b.aApprendrePour))[0];
+  const compte = (annee) => listes.filter((l) => !annee || l.annee === annee).length;
 
   principal.innerHTML = `
     <section class="intro">
       <h1>Apprends ton vocabulaire d’anglais en jouant</h1>
       <p>Choisis la liste de ta séance, puis révise avec des cartes, des quiz, des paires et des dictées. Gratuit, sans compte, avec la prononciation en anglais et en français.</p>
-      ${prochaine ? `<a class="bouton bouton-grand" href="#/liste/${encodeURIComponent(prochaine.id)}">Réviser la prochaine liste : ${titre(prochaine)}</a>` : ''}
+      ${classe ? bandeauClasse(classe === TOUTES ? TOUTES : choisie || TOUTES) : ''}
+      ${classe && prochaine ? `<a class="bouton bouton-grand" href="#/liste/${encodeURIComponent(prochaine.id)}">Réviser la prochaine liste : ${titre(prochaine)}</a>` : ''}
     </section>
+    ${classe ? '' : choixClasse(listes)}
     <section aria-labelledby="titre-listes">
       <div class="entete-section">
         <h2 id="titre-listes">Listes de vocabulaire</h2>
         <a class="bouton bouton-secondaire" href="#/creer">＋ Ajouter une liste</a>
       </div>
       <div class="filtres">
-        <label>Année
-          <select id="filtre-annee" class="champ">
-            <option value="">Toutes</option>
-            ${ANNEES.map((a) => `<option ${prefs.annee === a ? 'selected' : ''}>${a}</option>`).join('')}
-          </select>
-        </label>
+        <div class="puces" role="group" aria-label="Filtrer par année">
+          ${['', ...ANNEES].map((annee) => `
+            <button type="button" class="puce" data-filtre="${annee}" aria-pressed="${annee === choisie}" ${annee && annee !== choisie && !compte(annee) ? 'disabled' : ''}>
+              ${annee || 'Toutes'} <span class="compte">${compte(annee)}</span>
+            </button>`).join('')}
+        </div>
         <label>Rechercher un mot
           <input id="filtre-texte" class="champ" type="search" placeholder="ex. habit, couche…">
         </label>
@@ -87,21 +133,44 @@ async function accueil() {
       ${API_INDISPONIBLE()}
     </section>`;
 
-  const filtreAnnee = principal.querySelector('#filtre-annee');
   const filtreTexte = principal.querySelector('#filtre-texte');
   const conteneur = principal.querySelector('#listes');
+  const puces = [...principal.querySelectorAll('.puce')];
+  let filtre = choisie;
   const afficher = () => {
+    puces.forEach((p) => p.setAttribute('aria-pressed', String(p.dataset.filtre === filtre)));
     const recherche = filtreTexte.value.trim().toLowerCase();
     const visibles = listes.filter((l) =>
-      (!filtreAnnee.value || l.annee === filtreAnnee.value)
+      (!filtre || l.annee === filtre)
       && (!recherche || l.mots.some((m) => `${m.en} ${m.fr}`.toLowerCase().includes(recherche))));
     conteneur.innerHTML = visibles.length
       ? visibles.map(carteListe).join('')
-      : '<li class="vide">Aucune liste ne correspond. Tu peux en <a href="#/creer">ajouter une</a>.</li>';
+      : `<li class="vide">Aucune liste ${filtre ? `en ${filtre} ` : ''}pour l’instant. <a href="#/creer">Ajoute celle de ta dernière séance</a> : toute ta classe pourra l’utiliser.</li>`;
   };
-  filtreAnnee.addEventListener('change', () => { changerPreference('annee', filtreAnnee.value); afficher(); });
+  puces.forEach((p) => p.addEventListener('click', () => { filtre = p.dataset.filtre; afficher(); }));
   filtreTexte.addEventListener('input', afficher);
+
+  principal.querySelectorAll('[data-classe]').forEach((bouton) => bouton.addEventListener('click', () => {
+    changerPreference('annee', bouton.dataset.classe);
+    accueil().then(() => principal.querySelector('.bandeau-classe, .choix-classe h2')?.focus?.());
+  }));
+  principal.querySelector('#copier-lien-classe')?.addEventListener('click', async () => {
+    const retour = principal.querySelector('.bandeau-classe .retour');
+    try {
+      await navigator.clipboard.writeText(lienClasse(choisie));
+      retour.textContent = 'Lien copié : partage-le à ta classe, elle arrivera directement sur ses listes.';
+    } catch {
+      retour.textContent = `Lien de ta classe : ${lienClasse(choisie)}`;
+    }
+  });
   afficher();
+}
+
+/** Lien de classe (#/a3) : retient la classe puis affiche l'accueil, sans garder le lien dans l'historique. */
+function arriverParLienClasse(annee) {
+  changerPreference('annee', annee.toUpperCase());
+  history.replaceState(null, '', '#/');
+  return accueil();
 }
 
 const API_INDISPONIBLE = () => (apiJoignable ? '' : '<p class="note">Le serveur de partage ne répond pas pour l’instant : seules les listes pré-enregistrées et celles de cet appareil sont affichées.</p>');
@@ -492,6 +561,7 @@ const ROUTES = [
   [/^#\/creer$/, () => formulaire()],
   [/^#\/modifier\/([^/]+)$/, (id) => formulaire(decodeURIComponent(id))],
   [/^#\/recevoir\/(.+)$/, (donnees) => recevoir(donnees)],
+  [/^#\/(a[1-3])$/i, (annee) => arriverParLienClasse(annee)],
 ];
 
 async function router() {
