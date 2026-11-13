@@ -1,0 +1,8 @@
+#!/bin/sh
+# Refuse les messages de commit hors Conventional Commits (type(portée)!: description).
+titre=$(head -n 1 "$1")
+motif='^(feat|fix|perf|refactor|docs|test|build|ci|style|chore|revert)(\([^)]+\))?!?: .+'
+if ! printf '%s' "$titre" | grep -Eq "$motif" && ! printf '%s' "$titre" | grep -Eq '^(Merge|Revert) '; then
+  echo "Message refusé : utilise le format Conventional Commits, ex. « feat(jeux): ajouter la dictée »." >&2
+  exit 1
+fi
