@@ -249,3 +249,5 @@ details textarea { margin: 0.5rem 0; resize: vertical; }
 .reglage-voix .grille-champs { margin-top: 1rem; }
 .ligne-voix { display: flex; gap: 0.75rem; align-items: flex-end; }
 .ligne-voix label { flex: 1; min-width: 0; }
+.maitrise-liste p { margin: 0.4rem 0; }
+.jauge-large { display: block; width: min(100%, 320px); height: 10px; border-radius: 5px; }

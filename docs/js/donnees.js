@@ -191,22 +191,28 @@ export function lireLienDePartage(base64) {
 // --- Progression (méthode des boîtes de Leitner) ---
 
 const cleMot = (mot) => `${mot.en}|${mot.fr}`;
-export const BOITE_MAITRISEE = 4;
+// Un mot monte d'une boîte par bonne réponse et en redescend d'une par erreur ; il est maîtrisé dans la dernière.
+const BOITE_MAX = 3;
 
 export function boite(listeId, mot) {
-  return lireStockage(CLE_PROGRESSION, {})[listeId]?.[cleMot(mot)] ?? 0;
+  return Math.min(lireStockage(CLE_PROGRESSION, {})[listeId]?.[cleMot(mot)] ?? 0, BOITE_MAX);
 }
 
 export function noterReponse(listeId, mot, juste) {
   const progression = lireStockage(CLE_PROGRESSION, {});
   const liste = (progression[listeId] ??= {});
-  liste[cleMot(mot)] = juste ? Math.min((liste[cleMot(mot)] ?? 0) + 1, 5) : 1;
+  const actuelle = Math.min(liste[cleMot(mot)] ?? 0, BOITE_MAX);
+  liste[cleMot(mot)] = juste ? Math.min(actuelle + 1, BOITE_MAX) : Math.max(actuelle - 1, 0);
   ecrireStockage(CLE_PROGRESSION, progression);
 }
 
+/** Progression de la liste en pourcentage (chaque bonne réponse compte) et nombre de mots maîtrisés. */
 export function maitrise(liste) {
-  const acquis = liste.mots.filter((mot) => boite(liste.id, mot) >= BOITE_MAITRISEE).length;
-  return Math.round((acquis / liste.mots.length) * 100);
+  const boites = liste.mots.map((mot) => boite(liste.id, mot));
+  return {
+    pourcentage: Math.round((boites.reduce((total, b) => total + b, 0) / (BOITE_MAX * boites.length)) * 100),
+    maitrises: boites.filter((b) => b === BOITE_MAX).length,
+  };
 }
 
 export function reinitialiserProgression(listeId) {
