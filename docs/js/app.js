@@ -7,7 +7,7 @@ import {
 import { boutonAudio, brancherAudio, JEUX, lancerJeu } from './jeux.js';
 import { importerFichier, lignesEnMots, lignesTexte } from './import.js';
 import { aujourdhui, echapper, formaterDate } from './texte.js';
-import { voixDisponible } from './voix.js';
+import { choisirVoix, lire, voixChoisie, voixDisponible, voixPour } from './voix.js';
 
 const principal = document.querySelector('#principal');
 let nettoyer = () => {};
@@ -141,6 +141,12 @@ async function detail(id) {
       </ul>
     </section>
 
+    ${voixDisponible() ? `<section aria-labelledby="titre-voix" class="reglage-voix">
+      <h2 id="titre-voix">Voix</h2>
+      <div class="grille-champs" id="choix-voix"></div>
+      <p class="note" id="alerte-voix" hidden></p>
+    </section>` : ''}
+
     <section aria-labelledby="titre-mots">
       <h2 id="titre-mots">Les mots</h2>
       <table class="tableau-mots">
@@ -168,6 +174,7 @@ async function detail(id) {
     </section>`;
 
   principal.querySelectorAll('input[name="sens"]').forEach((radio) => radio.addEventListener('change', () => changerPreference('sens', radio.value)));
+  if (voixDisponible()) afficherChoixVoix();
   const retour = principal.querySelector('.actions-liste .retour');
   principal.querySelector('.actions-liste').addEventListener('click', async (evenement) => {
     const action = evenement.target.closest('[data-action]')?.dataset.action;
@@ -194,6 +201,45 @@ async function detail(id) {
     } catch (erreur) {
       retour.textContent = `Impossible : ${erreur.message}`;
     }
+  });
+}
+
+const EXEMPLES_VOIX = { en: 'Hello, how are you?', fr: 'Bonjour, comment ça va ?' };
+const AIDE_VOIX = 'Aucune voix anglaise sur cet appareil : la prononciation serait faite avec un accent français. '
+  + 'Ouvre le site dans Chrome ou Edge (voix en ligne incluses), ou installe une voix anglaise : '
+  + 'Windows › Paramètres › Heure et langue › Voix ; Android › Paramètres › Synthèse vocale ; iPhone › Réglages › Accessibilité › Contenu énoncé › Voix.';
+
+async function afficherChoixVoix() {
+  const conteneur = principal.querySelector('#choix-voix');
+  const alerte = principal.querySelector('#alerte-voix');
+  const libelles = { en: '🇬🇧 Voix anglaise', fr: '🇫🇷 Voix française' };
+  for (const langue of ['en', 'fr']) {
+    const disponibles = await voixPour(langue);
+    if (!conteneur.isConnected) return;
+    if (!disponibles.length) {
+      if (langue === 'en') { alerte.textContent = AIDE_VOIX; alerte.hidden = false; }
+      continue;
+    }
+    const choisie = await voixChoisie(langue);
+    conteneur.insertAdjacentHTML('beforeend', `
+      <div class="ligne-voix">
+        <label>${libelles[langue]}
+          <select class="champ" data-langue="${langue}">
+            ${disponibles.map((v) => `<option ${v.name === choisie?.name ? 'selected' : ''}>${echapper(v.name)}</option>`).join('')}
+          </select>
+        </label>
+        <button type="button" class="bouton bouton-secondaire" data-essai="${langue}">▶ Essayer</button>
+      </div>`);
+  }
+  conteneur.addEventListener('change', (evenement) => {
+    const select = evenement.target.closest('select[data-langue]');
+    if (!select) return;
+    choisirVoix(select.dataset.langue, select.value);
+    lire(EXEMPLES_VOIX[select.dataset.langue], select.dataset.langue);
+  });
+  conteneur.addEventListener('click', (evenement) => {
+    const langue = evenement.target.closest('[data-essai]')?.dataset.essai;
+    if (langue) lire(EXEMPLES_VOIX[langue], langue);
   });
 }
 
