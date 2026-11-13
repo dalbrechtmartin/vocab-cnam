@@ -36,7 +36,7 @@ function anneeProf(liste) {
 }
 
 function carteListe(liste) {
-  const pourcentage = maitrise(liste);
+  const { pourcentage } = maitrise(liste);
   return `
     <li>
       <a class="carte-liste" href="#/liste/${encodeURIComponent(liste.id)}">
@@ -45,7 +45,7 @@ function carteListe(liste) {
         ${echeance(liste)}
         <span class="carte-liste-pied">
           <span>${liste.mots.length} mot${liste.mots.length > 1 ? 's' : ''}</span>
-          <span class="maitrise" aria-label="Maîtrisé à ${pourcentage} %"><span class="jauge"><span style="width:${pourcentage}%"></span></span>${pourcentage} %</span>
+          <span class="maitrise" aria-label="Progression ${pourcentage} %"><span class="jauge"><span style="width:${pourcentage}%"></span></span>${pourcentage} %</span>
         </span>
       </a>
     </li>`;
@@ -119,7 +119,10 @@ async function detail(id) {
       <p class="annee">${badge(liste)} ${anneeProf(liste)}</p>
       <h1>${titre(liste)}</h1>
       ${echeance(liste)}
-      <p class="maitrise-liste">Maîtrisé : <strong>${maitrise(liste)} %</strong> des ${liste.mots.length} mots</p>
+      ${(({ pourcentage, maitrises }) => `<div class="maitrise-liste">
+        <p>Progression : <strong>${pourcentage} %</strong> · ${maitrises} mot${maitrises > 1 ? 's' : ''} sur ${liste.mots.length} maîtrisé${maitrises > 1 ? 's' : ''}</p>
+        <span class="jauge jauge-large"><span style="width:${pourcentage}%"></span></span>
+      </div>`)(maitrise(liste))}
     </header>
 
     <section aria-labelledby="titre-jeux">
