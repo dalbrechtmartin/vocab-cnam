@@ -9,12 +9,12 @@ const DOSSIER_DONNEES = process.env.DOSSIER_DONNEES ?? '/data';
 const ORIGINES = (process.env.ORIGINES_AUTORISEES ?? 'https://dalbrechtmartin.github.io').split(',').map((o) => o.trim());
 const CLE_ADMIN = process.env.CLE_ADMIN ?? '';
 const ANNEES = ['A1', 'A2', 'A3'];
-const LIMITE_MOTS = 300;
-const LIMITE_TEXTE = 200;
-const LIMITE_CORPS = 100_000;
+const LIMITE_MOTS = 150;
+const LIMITE_TEXTE = 150;
+const LIMITE_CORPS = 50_000;
 const ECRITURES_PAR_HEURE = 30;
 const ECRITURES_GLOBALES_PAR_HEURE = 300;
-const LIMITE_LISTES = 2000;
+const LIMITE_LISTES = 1000;
 
 mkdirSync(DOSSIER_DONNEES, { recursive: true });
 const base = new DatabaseSync(`${DOSSIER_DONNEES}/vocab.sqlite`);
@@ -84,19 +84,34 @@ const HEURE = 3_600_000;
 const ecritures = new Map();
 let ecrituresGlobales = [];
 
-const client = (ip) => (ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip);
+// IPv6 regroupées par /48 : un hébergeur en attribue souvent un entier à une seule machine.
+const client = (ip) => (ip.includes(':') ? ip.split(':').slice(0, 3).join(':') : ip);
 
-function limiterEcritures(ip) {
+function verifierQuota(ip) {
   const maintenant = Date.now();
-  const cle = client(ip);
-  const recentes = (ecritures.get(cle) ?? []).filter((t) => maintenant - t < HEURE);
+  const recentes = (ecritures.get(client(ip)) ?? []).filter((t) => maintenant - t < HEURE);
+  ecritures.set(client(ip), recentes);
   ecrituresGlobales = ecrituresGlobales.filter((t) => maintenant - t < HEURE);
   if (recentes.length >= ECRITURES_PAR_HEURE || ecrituresGlobales.length >= ECRITURES_GLOBALES_PAR_HEURE) {
     throw new ErreurClient(429, 'Trop de modifications, réessaie dans une heure.');
   }
-  ecritures.set(cle, [...recentes, maintenant]);
-  ecrituresGlobales.push(maintenant);
 }
+
+/** Compte une écriture ; un essai refusé (mauvaise clé) ne pèse que sur son auteur, pas sur le quota de tous. */
+function compterEcriture(ip, { globale = true } = {}) {
+  ecritures.get(client(ip)).push(Date.now());
+  if (globale) ecrituresGlobales.push(Date.now());
+}
+
+// Réponse de GET /api/listes gardée sérialisée jusqu'à la prochaine écriture.
+let listesSerialisees = null;
+class Brut {
+  constructor(texte) {
+    this.texte = texte;
+  }
+}
+const toutesSerialisees = () => (listesSerialisees ??= new Brut(JSON.stringify(requetes.toutes.all().map(enListe))));
+const invaliderCache = () => { listesSerialisees = null; };
 
 setInterval(() => {
   const maintenant = Date.now();
@@ -148,14 +163,16 @@ async function traiter(requete) {
   if (pathname === '/sante') return [200, { ok: true }];
 
   if (pathname === '/api/listes') {
-    if (requete.method === 'GET') return [200, requetes.toutes.all().map(enListe)];
+    if (requete.method === 'GET') return [200, toutesSerialisees()];
     if (requete.method === 'POST') {
-      limiterEcritures(ip);
+      verifierQuota(ip);
       if (requetes.compter.get().total >= LIMITE_LISTES) throw new ErreurClient(507, 'Le serveur de partage est plein, préviens la personne qui le gère.');
       const liste = validerListe(await lireCorps(requete));
+      compterEcriture(ip);
       const id = randomUUID();
       const cleEdition = randomBytes(24).toString('base64url');
       requetes.creer.run(id, JSON.stringify(liste), empreinte(cleEdition).toString('hex'));
+      invaliderCache();
       return [201, { id, cleEdition }];
     }
   }
@@ -167,13 +184,19 @@ async function traiter(requete) {
     if (requete.method === 'GET') return [200, enListe(ligne)];
     const cle = String(requete.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
     if (!['PUT', 'DELETE'].includes(requete.method)) throw new ErreurClient(405, 'Méthode non autorisée.');
-    limiterEcritures(ip);
-    if (!cleValide(cle, ligne.empreinte_cle)) throw new ErreurClient(403, 'Seule la personne qui a publié cette liste peut la modifier.');
+    verifierQuota(ip);
+    if (!cleValide(cle, ligne.empreinte_cle)) {
+      compterEcriture(ip, { globale: false });
+      throw new ErreurClient(403, 'Seule la personne qui a publié cette liste peut la modifier.');
+    }
+    compterEcriture(ip);
     if (requete.method === 'PUT') {
       requetes.modifier.run(JSON.stringify(validerListe(await lireCorps(requete))), ligne.id);
+      invaliderCache();
       return [200, enListe(requetes.une.get(ligne.id))];
     }
     requetes.supprimer.run(ligne.id);
+    invaliderCache();
     return [204, null];
   }
 
@@ -191,5 +214,5 @@ createServer(async (requete, reponse) => {
     if (statut === 500) console.error(erreur);
   }
   reponse.writeHead(statut, entetes(requete));
-  reponse.end(corps === null ? undefined : JSON.stringify(corps));
+  reponse.end(corps === null ? undefined : corps instanceof Brut ? corps.texte : JSON.stringify(corps));
 }).listen(PORT, () => console.log(`API vocab-cnam à l’écoute sur le port ${PORT}`));
